@@ -1,9 +1,6 @@
 # Flutter Claude Skills
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![GitHub stars](https://img.shields.io/github/stars/Harishwarrior/flutter-claude-skills?style=social)](https://github.com/Harishwarrior/flutter-claude-skills/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/Harishwarrior/flutter-claude-skills)](https://github.com/Harishwarrior/flutter-claude-skills/issues)
-[![GitHub forks](https://img.shields.io/github/forks/Harishwarrior/flutter-claude-skills?style=social)](https://github.com/Harishwarrior/flutter-claude-skills/network/members)
 
 A collection of specialized Claude Code skills for Flutter development, focusing on testing and security best practices.
 

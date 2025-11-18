@@ -99,7 +99,7 @@ void main() {
 }
 ```
 
-### Key Patterns
+### Repository Testing Key Patterns
 
 - **Mock both data sources** (DAO and API)
 - **Test success paths** - Verify data flows correctly
@@ -224,7 +224,7 @@ void main() {
 }
 ```
 
-### Key Patterns
+### DAO Testing Key Patterns
 
 - **Use in-memory database** - Fast and isolated tests
 - **Create/delete tables** in setUp/tearDown
@@ -324,7 +324,7 @@ void main() {
 }
 ```
 
-### Key Patterns
+### Provider Testing Key Patterns
 
 - **Override providers** - Use `ProviderContainer` with overrides
 - **Test async states** - Handle loading, data, and error states
@@ -412,7 +412,7 @@ void main() {
 }
 ```
 
-### Key Patterns
+### Service Testing Key Patterns
 
 - **Test business logic** - Focus on the "what", not the "how"
 - **Test caching strategies** - Verify cache hits/misses

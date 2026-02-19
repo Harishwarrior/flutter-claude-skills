@@ -11,610 +11,152 @@ metadata:
 
 ## Overview
 
-This skill provides comprehensive guidance for writing consistent, reliable, and maintainable tests for Flutter applications. Follow the testing patterns, mocking strategies, and architectural guidelines to ensure tests are isolated, repeatable, and cover both success and error scenarios. This skill works with any Flutter project using common packages like Riverpod, Mockito, and flutter_test.
+Test each architectural layer in isolation using Given-When-Then structure. Always test both success and error paths. Never mock providers — override their dependencies instead.
 
-## When to Use This Skill
+## Reference Files
 
-Use this skill when:
+Load the relevant file based on what you're testing:
 
-- Creating new unit tests for repositories, providers, DAOs, or services
-- Writing widget tests for UI components and views
-- Setting up mocks and test dependencies with Mockito and Riverpod
-- Implementing Given-When-Then test structure
-- Testing state management with Riverpod providers
-- Writing integration tests for multi-layer workflows
-- Debugging or fixing existing tests
-- Ensuring proper test coverage across data, domain, and presentation layers
+| What you're testing | Reference file |
+| --- | --- |
+| Repository, DAO, Service logic | `references/layer_testing_patterns.md` |
+| Widget UI, interactions, dialogs, navigation | `references/widget_testing_guide.md` |
+| Riverpod provider state, mutations, lifecycle | `references/riverpod_testing_guide.md` |
 
-## Core Testing Principles
+## Core Principles
 
-### 1. Clean Architecture Testing
+### 1. Layer Isolation
 
-Test each layer in **isolation**:
+Test each layer against its own mocked dependencies:
 
-- **Data Layer** → DAOs, APIs, Repositories
-- **Domain Layer** → Models (Freezed), Entities
-- **Presentation Layer** → Providers (Riverpod), Views, Controllers
+| Layer | What to test | What to mock |
+| --- | --- | --- |
+| **Repository** | Data coordination between sources | DAOs, APIs, Logger |
+| **DAO** | Database CRUD operations | Use real in-memory DB, mock Logger |
+| **Provider** | State management and transitions | Services, Repositories |
+| **Service** | Business logic and workflows | Repositories, Network clients |
+| **Widget** | UI behaviour and interactions | Provider dependencies (via overrides) |
 
 ### 2. Given-When-Then Structure
 
-Always structure tests using Given-When-Then pattern:
-
 ```dart
-test('Given valid data, When operation executes, Then returns expected result', () async {
+test('Given valid data, When fetchUsers called, Then returns user list', () async {
   // Arrange (Given)
-  when(mockDAO.getData()).thenAnswer((_) async => testData);
+  when(mockDAO.fetchAll()).thenAnswer((_) async => expectedUsers);
 
   // Act (When)
-  final result = await repository.fetchData();
+  final result = await repository.fetchUsers();
 
   // Assert (Then)
-  expect(result, equals(testData));
-  verify(mockDAO.getData()).called(1);
+  expect(result, equals(expectedUsers));
+  verify(mockDAO.fetchAll()).called(1);
 });
 ```
 
-### 3. Test Organization
-
-- Group related tests using `group()` blocks
-- Use `setUp()` for common initialization
-- Use `tearDown()` for cleanup (reset GetIt, dispose resources)
-- Use `setUpAll()` for one-time expensive setup
-
-## Testing Workflow
-
-### Step 1: Identify the Layer Under Test
-
-Determine which architectural layer you're testing:
-
-- **Repository tests** → Mock DAOs and APIs
-- **Provider tests** → Mock services and repositories
-- **Widget tests** → Mock providers and services
-- **DAO tests** → Use FakeDatabase
-
-### Step 2: Set Up Dependencies and Mocks
-
-#### Generate Mocks with Mockito
+### 3. Test Organisation
 
 ```dart
-@GenerateMocks([ILogger, ICarouselRepository, INotificationDAO])
-void main() {
-  // Test code
-}
+group('UserRepository', () {
+  group('fetchUsers', () {
+    setUp(() { /* init mocks, register with GetIt */ });
+    tearDown(() => GetIt.I.reset()); // Always reset GetIt
+
+    test('Given success ... When ... Then ...', () { });
+    test('Given error  ... When ... Then ...', () { });
+  });
+});
 ```
 
-**Important**: Never mock providers directly. Override their dependencies instead.
+## Standard Test Setup
 
-#### Register with GetIt
+### Generate Mocks
+
+```dart
+@GenerateMocks([IUserDAO, IUserAPI, ILogger])
+void main() { ... }
+```
+
+Run `dart run build_runner build` after modifying `@GenerateMocks`.
+
+### Register with GetIt
 
 ```dart
 setUp(() {
+  mockDAO = MockIUserDAO();
   mockLogger = MockILogger();
-  mockRepository = MockICarouselRepository();
-  GetIt.I.registerSingleton<ILogger>(mockLogger);
-  GetIt.I.registerSingleton<ICarouselRepository>(mockRepository);
+  GetIt.I
+    ..registerSingleton<IUserDAO>(mockDAO)
+    ..registerSingleton<ILogger>(mockLogger);
 });
 
-tearDown(() => GetIt.I.reset());
+tearDown(() => GetIt.I.reset()); // Critical — always reset
 ```
 
-#### SharedPreferences Setup
+### Fakes vs Mocks
 
-```dart
-setUpAll(() async {
-  SharedPreferences.setMockInitialValues({'key1': 'value1'});
-  SharedPrefManager.instance = await SharedPreferences.getInstance();
-});
+- **Fakes** (`class FakeLogger extends ILogger`) — silent stubs; use when you don't need to verify calls
+- **Mocks** (`MockILogger`) — use when you need `when()`, `verify()`, or `thenThrow()`
+
+## Quick Reference
+
+| Scenario | Key pattern |
+| --- | --- |
+| Test a repository | Mock DAO + API → inject into repository constructor |
+| Test a DAO | `FakeDatabase` or `openInMemoryDatabase()` in setUp, delete table in tearDown |
+| Test a Riverpod provider | `createContainer(overrides: [serviceProvider.overrideWith(...)])` |
+| Test a widget | Set screen size, use `find.byKey()`, call `pumpAndSettle()` |
+| Test a loading state | Use `Completer`, `pump()` to assert loading, complete, `pump()` again |
+| Test platform-specific UI | `debugDefaultTargetPlatformOverride = TargetPlatform.iOS` — reset after |
+| Test GoRouter navigation | `FakeGoRouter` + `MockGoRouterProvider` |
+
+## Running Tests
+
+```bash
+flutter test --coverage                       # All tests with coverage
+flutter test test/path/to/test.dart           # Specific file
+flutter test --plain-name "Given valid data"  # Filter by name
+genhtml coverage/lcov.info -o coverage/html   # Generate HTML coverage report
+# Prefix any command with `fvm` if using Flutter Version Manager
 ```
 
-### Step 3: Write Tests Following Layer Patterns
-
-Refer to the `references/layer_testing_patterns.md` file for detailed examples of:
-
-- Repository testing patterns
-- Provider testing patterns with Riverpod
-- DAO testing patterns with FakeDatabase
-- Widget testing patterns with keys and screen size setup
-
-### Step 4: Test Error Scenarios
-
-Always test both success and failure paths:
-
-```dart
-test('Given service throws exception, When called, Then logs error and returns fallback', () async {
-  // Arrange
-  final exception = Exception('Network error');
-  when(mockService.fetchData()).thenThrow(exception);
-
-  // Act
-  final result = await repository.getData();
-
-  // Assert
-  expect(result, isEmpty); // Or appropriate fallback
-  verify(mockLogger.writeExceptionLog('RepositoryName', 'getData', exception, any)).called(1);
-});
-```
-
-## Widget Testing Essentials
-
-### Always Set Screen Size
-
-```dart
-testWidgets('Test description', (tester) async {
-  tester.view.physicalSize = const Size(1000, 1000);
-  tester.view.devicePixelRatio = 1.0;
-
-  // Your test code
-});
-```
-
-### Always Use Keys for Widget Finding
-
-**In source code:**
-
-```dart
-ElevatedButton(
-  key: const Key('saveButton'),
-  onPressed: () {},
-  child: const Text('Save'),
-);
-```
-
-**In test:**
-
-```dart
-await tester.tap(find.byKey(const Key('saveButton')));
-await tester.pumpAndSettle();
-```
-
-If a key doesn't exist in the source widget, **add it** before writing the test.
-
-### Loading → Content Transitions
-
-```dart
-when(mockService.fetchData()).thenAnswer((_) async => data);
-
-await tester.pumpWidget(createTestWidget());
-expect(find.byType(CircularProgressIndicator), findsOneWidget);
-
-await tester.pumpAndSettle();
-expect(find.byType(DataWidget), findsOneWidget);
-```
-
-### Platform-Specific Testing
-
-```dart
-testWidgets('iOS specific behavior', (tester) async {
-  debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-
-  await tester.pumpWidget(createTestWidget());
-
-  expect(find.byType(CupertinoButton), findsOneWidget);
-
-  debugDefaultTargetPlatformOverride = null;
-});
-```
-
-## Riverpod Testing
-
-### Create Container with Overrides
-
-```dart
-final container = createContainer(overrides: [
-  repoProvider.overrideWith((ref) => mockRepo),
-]);
-```
-
-Use the `createContainer()` helper from `test/riverpod_container.dart` which auto-disposes on tearDown.
-
-### Test Provider State
-
-```dart
-test('Given valid data, When state updates, Then reflects new value', () async {
-  final notifier = container.read(provider.notifier);
-
-  notifier.updateState(newValue);
-
-  expect(container.read(provider).value!.property, newValue);
-});
-```
-
-### Test Initial State
-
-```dart
-test('Given empty data, When building initial state, Then returns default state', () async {
-  when(mockService.fetchData()).thenAnswer((_) async => []);
-
-  final container = createContainer();
-  final state = await container.read(provider.notifier).future;
-
-  expect(state.data, isEmpty);
-  expect(state.isLoading, false);
-});
-```
-
-## Stubbing Patterns
-
-### Success Scenarios
-
-```dart
-when(mockRepo.fetchFromDb()).thenAnswer((_) async => mockData);
-when(mockApi.updateData(any, any, any)).thenAnswer((_) async => true);
-```
-
-### Failure Scenarios
-
-```dart
-when(mockRepo.fetchFromDb()).thenThrow(Exception('DB error'));
-when(mockApi.updateData(any, any, any)).thenAnswer((_) async => false);
-```
-
-### Using Completers for Async Control
-
-```dart
-final completer = Completer<RegistrationModel>();
-
-when(mockRepo.fetchData(any, any)).thenAnswer((_) => completer.future);
-
-await tester.tap(find.text('Save'));
-await tester.pump();
-
-expect(find.byType(CircularProgressIndicator), findsOneWidget);
-
-completer.complete(const RegistrationModel(status: 'success'));
-await tester.pump();
-
-expect(find.byType(CircularProgressIndicator), findsNothing);
-```
-
-## Fakes vs Mocks
-
-### When to Use Fakes
-
-Use fake implementations for consistent dummy behavior:
-
-```dart
-class FakeLogger extends ILogger {
-  @override
-  void writeInfoLog(String className, String method, String message) {}
-
-  @override
-  void writeErrorLog(String className, String method, dynamic error, StackTrace? stack, [String? msg]) {}
-}
-```
-
-Register in test setup:
-
-```dart
-GetIt.I.registerSingleton<ILogger>(FakeLogger.i);
-```
-
-### When to Use Mocks
-
-Use mocks when you need to verify method calls or setup specific behaviors:
-
-```dart
-when(mockLogger.writeErrorLog(any, any, any, any)).thenReturn(null);
-verify(mockLogger.writeErrorLog('ClassName', 'methodName', exception, any)).called(1);
-```
-
-## Database Testing with FakeDatabase
-
-```dart
-late MenuDAO menuDAO;
-late Database db;
-late IDatabase mockDatabase;
-
-setUp(() async {
-  await FakePathProviderPlatform.initialize();
-  PathProviderPlatform.instance = FakePathProviderPlatform();
-
-  mockDatabase = FakeDatabase();
-  db = await mockDatabase.database;
-
-  menuDAO = MenuDAO(
-    dbManager: mockDatabase,
-    logger: mockLogger,
-  );
-});
-
-tearDown() async {
-  await menuDAO.deleteTable();
-  if (GetIt.I.isRegistered<IDatabase>()) {
-    await GetIt.I<IDatabase>().close();
-  }
-  await GetIt.I.reset();
-  await FakePathProviderPlatform.cleanup();
-}
-```
+## Common Mistakes
+
+| Mistake | Fix |
+| --- | --- |
+| Mocking a provider directly | Override its dependencies: `provider.overrideWith(...)` |
+| Missing `GetIt.I.reset()` in `tearDown` | Tests pollute each other — always reset |
+| `await Future.delayed()` in tests | Use `await tester.pumpAndSettle()` or `Completer` instead |
+| Finding widgets by text string | Use `find.byKey(const Key('name'))` — stable across text changes |
+| No screen size in widget tests | Add `tester.view.physicalSize = const Size(1000, 1000)` |
+| Not resetting `debugDefaultTargetPlatformOverride` | Set to `null` at the end of the test |
+| `tearDown()` without a lambda | Write `tearDown(() async { ... })` not `tearDown() async { ... }` |
 
 ## Test Checklist
-
-Before submitting tests, ensure:
 
 **Setup & Mocking:**
 
 - [ ] Dependencies mocked (not providers)
 - [ ] SharedPreferences mocked if used
-- [ ] GetIt reset in tearDown
-- [ ] Streams closed in tearDown
-- [ ] Controllers disposed in tearDown
+- [ ] `GetIt.I.reset()` in `tearDown`
+- [ ] Streams closed in `tearDown`
+- [ ] Controllers disposed in `tearDown`
 
 **Widget Tests:**
 
-- [ ] **Keys added & used in widget tests**
-- [ ] Screen size set (physicalSize + devicePixelRatio)
-- [ ] Platform overrides reset (debugDefaultTargetPlatformOverride = null)
-- [ ] Navigation tested if applicable
-- [ ] Dialogs/overlays tested if shown
+- [ ] Keys added to source widgets and used in `find.byKey()`
+- [ ] Screen size set (`physicalSize` + `devicePixelRatio`)
+- [ ] Platform overrides reset (`debugDefaultTargetPlatformOverride = null`)
+- [ ] Navigation verified if applicable
 
 **Test Coverage:**
 
-- [ ] Success & failure paths covered
+- [ ] Success and failure paths covered
 - [ ] Edge cases tested (null, empty, max values)
-- [ ] Loading states tested
-- [ ] Error states tested
-- [ ] Async handled correctly (await, Completer)
+- [ ] Loading and error states tested
+- [ ] Async handled correctly (no `Future.delayed`)
 
 **Code Quality:**
 
 - [ ] Given-When-Then naming used
-- [ ] verify() or verifyNever() used where appropriate
-- [ ] No hardcoded delays (use pump/pumpAndSettle)
-- [ ] Tests are isolated (no dependencies between tests)
-- [ ] Tests are deterministic (same result every time)
-
-## Common Patterns
-
-### Verification Patterns
-
-```dart
-// Single call
-verify(mockService.method()).called(1);
-
-// Multiple calls
-verify(mockService.method()).called(3);
-
-// Never called
-verifyNever(mockService.method());
-
-// Ordered calls
-verifyInOrder([
-  mockService.method1(),
-  mockService.method2(),
-]);
-```
-
-### Testing Global State
-
-```dart
-import 'package:your_app/path/to/global_variables.dart' as global_variables;
-
-setUp(() {
-  global_variables.someGlobalVariable = initialValue;
-});
-
-tearDown(() {
-  global_variables.someGlobalVariable = initialValue; // Reset to default
-});
-```
-
-### Testing Dispose/Cleanup
-
-```dart
-testWidgets('Given provider disposed, When container disposed, Then unsubscribes and cleans up', () async {
-  final container = createContainer();
-  final notifier = container.read(provider.notifier);
-  await notifier.future;
-
-  container.dispose();
-
-  verify(mockService.unsubscribe(any, any)).called(1);
-  verify(mockService.dispose(any)).called(1);
-});
-```
-
-## Running Tests
-
-### Run All Tests
-
-```bash
-flutter test --coverage
-# Or if using FVM:
-fvm flutter test --coverage
-```
-
-### Run Specific Test File
-
-```bash
-flutter test test/path/to/your_test.dart
-# Or if using FVM:
-fvm flutter test test/path/to/your_test.dart
-```
-
-### Run Specific Test by Name
-
-```bash
-flutter test --plain-name "Given valid data"
-# Or if using FVM:
-fvm flutter test --plain-name "Given valid data"
-```
-
-### Generate Coverage Report
-
-```bash
-flutter test --coverage
-genhtml coverage/lcov.info -o coverage/html
-# Or if using FVM:
-fvm flutter test --coverage
-genhtml coverage/lcov.info -o coverage/html
-```
-
-## Test Helpers and Utilities
-
-### Creating a Test Widget Wrapper
-
-```dart
-Widget createTestWidget(Widget child) {
-  return MaterialApp(
-    home: Scaffold(
-      body: child,
-    ),
-  );
-}
-
-// With Riverpod
-Widget createTestWidgetWithProviders(Widget child, List<Override> overrides) {
-  return ProviderScope(
-    overrides: overrides,
-    child: MaterialApp(
-      home: Scaffold(
-        body: child,
-      ),
-    ),
-  );
-}
-```
-
-### Reusable Riverpod Container Helper
-
-```dart
-ProviderContainer createContainer({List<Override> overrides = const []}) {
-  final container = ProviderContainer(overrides: overrides);
-  addTearDown(container.dispose);
-  return container;
-}
-```
-
-### Finding Widgets by Type and Text
-
-```dart
-// Find by type
-expect(find.byType(CircularProgressIndicator), findsOneWidget);
-
-// Find by text
-expect(find.text('Hello'), findsOneWidget);
-
-// Find by key
-expect(find.byKey(const Key('myKey')), findsOneWidget);
-
-// Find descendant
-expect(
-  find.descendant(
-    of: find.byType(Container),
-    matching: find.text('Child'),
-  ),
-  findsOneWidget,
-);
-
-// Find ancestor
-expect(
-  find.ancestor(
-    of: find.text('Child'),
-    matching: find.byType(Container),
-  ),
-  findsOneWidget,
-);
-```
-
-### Matchers for Better Assertions
-
-```dart
-// Common matchers
-expect(value, equals(expected));
-expect(value, isNotNull);
-expect(value, isNull);
-expect(list, isEmpty);
-expect(list, isNotEmpty);
-expect(list, hasLength(3));
-expect(list, contains('item'));
-expect(list, containsAll(['a', 'b']));
-expect(value, greaterThan(5));
-expect(value, lessThan(10));
-expect(value, inRange(1, 10));
-
-// Custom matchers
-expect(find.byType(Widget), findsOneWidget);
-expect(find.byType(Widget), findsNothing);
-expect(find.byType(Widget), findsWidgets);
-expect(find.byType(Widget), findsNWidgets(3));
-```
-
-## Additional Testing Patterns
-
-### Testing with GetIt Dependency Injection
-
-```dart
-setUp(() {
-  GetIt.I.registerSingleton<ApiService>(mockApiService);
-  GetIt.I.registerLazySingleton<UserRepository>(() => UserRepository());
-});
-
-tearDown(() {
-  GetIt.I.reset(); // Always reset GetIt between tests
-});
-```
-
-### Testing Stream-Based Code
-
-```dart
-test('Given stream emits values, When listening, Then receives all values', () async {
-  // Arrange
-  final streamController = StreamController<int>();
-  final values = <int>[];
-
-  // Act
-  streamController.stream.listen(values.add);
-  streamController.add(1);
-  streamController.add(2);
-  streamController.add(3);
-  await streamController.close();
-
-  // Wait for stream to complete
-  await Future.delayed(Duration.zero);
-
-  // Assert
-  expect(values, equals([1, 2, 3]));
-});
-```
-
-### Testing Timer-Based Code
-
-```dart
-testWidgets('Given timer completes, When countdown finishes, Then shows message', (tester) async {
-  await tester.pumpWidget(MyTimerWidget());
-
-  // Fast-forward time
-  await tester.pump(const Duration(seconds: 5));
-
-  expect(find.text('Time is up!'), findsOneWidget);
-});
-```
-
-### Testing Scrollable Widgets
-
-```dart
-testWidgets('Given long list, When scrolling, Then finds bottom item', (tester) async {
-  await tester.pumpWidget(MyLongListWidget());
-
-  // Scroll until item is visible
-  await tester.scrollUntilVisible(
-    find.text('Item 99'),
-    500.0,
-  );
-
-  expect(find.text('Item 99'), findsOneWidget);
-});
-```
-
-## Resources
-
-This skill includes reference files with detailed patterns and examples:
-
-### references/
-
-- `layer_testing_patterns.md` - Comprehensive examples for testing repositories, providers, DAOs, and services
-- `widget_testing_guide.md` - Detailed widget testing patterns with keys, screen size, and user interactions
-- `riverpod_testing_guide.md` - Advanced Riverpod provider testing patterns and state management testing
-
-Refer to these references when you need specific implementation examples or encounter complex testing scenarios.
+- [ ] `verify()` or `verifyNever()` where appropriate
+- [ ] Tests are isolated and deterministic

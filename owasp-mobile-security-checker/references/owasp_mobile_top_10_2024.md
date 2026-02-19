@@ -486,7 +486,7 @@ final encrypter = Encrypter(AES(Key.fromBase64(key!), mode: AESMode.gcm));
 ## Quick Reference Summary
 
 | Risk | Issue | Common Attack | Flutter-Specific Checks |
-|------|-------|---------------|------------------------|
+| --- | --- | --- | --- |
 | **M1** | Hardcoded credentials | Key extraction | Check for hardcoded API keys, secrets in code/config files |
 | **M2** | Vulnerable dependencies | Supply-chain injection | Review `pubspec.yaml`, check for outdated packages |
 | **M3** | Weak authentication | Bypass/brute force | Verify secure token storage, MFA implementation |

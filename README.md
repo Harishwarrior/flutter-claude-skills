@@ -20,16 +20,18 @@ A collection of specialized Claude Code skills for Flutter development, focusing
 
 **Purpose:** Comprehensive testing guidance for Flutter applications
 
-A specialized skill that provides expert guidance on creating, writing, and analyzing tests in Flutter projects. Covers the full spectrum of testing including unit tests, widget tests, integration tests, and provides deep knowledge of mocking patterns, Riverpod state management testing, and industry best practices.
+A specialized skill that provides expert guidance on creating, writing, and analyzing tests in Flutter projects. Covers unit tests, widget tests, integration tests, and provides deep knowledge of mocking patterns, Riverpod state management testing, and industry best practices.
 
 **Key Features:**
 
 - Given-When-Then test structure patterns
-- Layer-by-layer testing strategies (Data, Domain, Presentation, Application)
+- Layer-by-layer testing strategies (Repository, DAO, Service, Provider, Widget)
 - Mockito and Riverpod testing patterns
 - Widget testing with proper screen size setup and key usage
 - Database testing with FakeDatabase
 - Stream, timer, and async testing patterns
+- Quick reference table mapping scenarios to patterns
+- Common mistakes guide covering the most frequent testing pitfalls
 - Comprehensive test checklists and verification patterns
 
 **Reference Documentation:**
@@ -52,7 +54,7 @@ A comprehensive security auditing skill based on the OWASP Mobile Top 10 (2024) 
 
 - **Automated Scanners:**
   - M1: Hardcoded secrets and credential detection
-  - M2: Dependency security and outdated package analysis
+  - M2: Dependency security and outdated package analysis (with safe FVM detection via `shutil.which`)
   - M5: Network security validation (HTTPS, certificate pinning)
   - M9: Storage security analysis (encryption, secure storage)
 
@@ -69,6 +71,8 @@ A comprehensive security auditing skill based on the OWASP Mobile Top 10 (2024) 
   - Flutter-specific code examples
   - Actionable remediation steps
   - OWASP risk categorization
+
+- **Scope guidance:** built for Flutter/mobile — not for web, backend, or as a substitute for professional pentesting
 
 **Reference Documentation:**
 
@@ -193,14 +197,17 @@ Claude will automatically activate the `owasp-mobile-security-checker` skill for
 You can also run the security scanners directly:
 
 ```bash
+# Set the skill directory path (adjust if you used Option 2 / project install)
+SKILL_DIR=~/.claude/skills/flutter-claude-skills/owasp-mobile-security-checker
+
 # From your Flutter project root
 cd /path/to/your/flutter/project
 
 # Run individual scanners
-python3 ~/.claude/skills/flutter-claude-skills/owasp-mobile-security-checker/scripts/scan_hardcoded_secrets.py .
-python3 ~/.claude/skills/flutter-claude-skills/owasp-mobile-security-checker/scripts/check_dependencies.py .
-python3 ~/.claude/skills/flutter-claude-skills/owasp-mobile-security-checker/scripts/check_network_security.py .
-python3 ~/.claude/skills/flutter-claude-skills/owasp-mobile-security-checker/scripts/analyze_storage_security.py .
+python3 $SKILL_DIR/scripts/scan_hardcoded_secrets.py .
+python3 $SKILL_DIR/scripts/check_dependencies.py .
+python3 $SKILL_DIR/scripts/check_network_security.py .
+python3 $SKILL_DIR/scripts/analyze_storage_security.py .
 ```
 
 Results are saved as JSON files in your project directory.

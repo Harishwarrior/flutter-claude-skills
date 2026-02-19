@@ -1,6 +1,10 @@
 ---
 name: owasp-mobile-security-checker
-description: Analyze Flutter and mobile applications for OWASP Mobile Top 10 (2024) security compliance. Use this skill when performing security audits, vulnerability assessments, or compliance checks on mobile applications. Performs automated scans for hardcoded secrets, insecure storage, weak cryptography, network security issues, and provides detailed remediation guidance.
+description: Use when performing security audits, vulnerability assessments, or compliance checks on Flutter or mobile applications. Covers OWASP Mobile Top 10 (2024) — hardcoded secrets (M1), insecure storage (M9), weak cryptography (M10), network issues (M5), and 6 more categories with automated scanners and remediation guidance.
+compatibility: Requires Python 3 for automated scanners. Flutter/Dart project with pubspec.yaml. Android and/or iOS targets. Run scripts from the project root directory.
+metadata:
+  author: harish
+  version: 1.0.0
 ---
 
 # OWASP Mobile Security Checker
@@ -93,13 +97,13 @@ Is this a quick security check before release?
 
 Perform a complete OWASP security audit:
 
-1. **Run automated scans** (from project root):
+1. **Run automated scans** (from project root, replace `<skill-dir>` with the path where this skill is installed, e.g. `~/.claude/skills/owasp-mobile-security-checker`):
 
    ```bash
-   python3 .claude/skills/owasp-mobile-security-checker/scripts/scan_hardcoded_secrets.py .
-   python3 .claude/skills/owasp-mobile-security-checker/scripts/check_dependencies.py .
-   python3 .claude/skills/owasp-mobile-security-checker/scripts/analyze_storage_security.py .
-   python3 .claude/skills/owasp-mobile-security-checker/scripts/check_network_security.py .
+   python3 <skill-dir>/scripts/scan_hardcoded_secrets.py .
+   python3 <skill-dir>/scripts/check_dependencies.py .
+   python3 <skill-dir>/scripts/analyze_storage_security.py .
+   python3 <skill-dir>/scripts/check_network_security.py .
    ```
 
 2. **Review JSON outputs**:

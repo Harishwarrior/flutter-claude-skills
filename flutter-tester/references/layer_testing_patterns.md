@@ -424,7 +424,7 @@ void main() {
 ### Testing Each Layer
 
 | Layer | What to Test | What to Mock |
-|-------|--------------|--------------|
+| --- | --- | --- |
 | **Repository** | Data coordination between sources | DAOs, APIs, Logger |
 | **DAO** | Database CRUD operations | Use real in-memory DB, mock Logger |
 | **Provider** | State management and transitions | Services, Repositories |

@@ -8,6 +8,7 @@ and known vulnerabilities.
 
 import yaml
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -63,13 +64,11 @@ def check_version_constraints(pubspec: Dict) -> List[Dict]:
 def check_outdated_packages(project_root: str) -> Dict:
     """Run 'flutter pub outdated' to check for outdated packages."""
     try:
-        # Check if fvm is available (for projects using Flutter Version Manager)
-        flutter_cmd = ['fvm', 'flutter', 'pub', 'outdated', '--json']
-
-        # Test if fvm exists, fallback to flutter
-        try:
-            subprocess.run(['fvm', '--version'], capture_output=True, timeout=5)
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Resolve fvm to its absolute path to avoid PATH-insertion attacks
+        fvm_path = shutil.which('fvm')
+        if fvm_path is not None:
+            flutter_cmd = [fvm_path, 'flutter', 'pub', 'outdated', '--json']
+        else:
             flutter_cmd = ['flutter', 'pub', 'outdated', '--json']
 
         result = subprocess.run(
@@ -103,9 +102,9 @@ def analyze_outdated_results(outdated_data: Dict) -> List[Dict]:
     packages = outdated_data.get('packages', [])
 
     for package in packages:
-        current_info = package.get('current') or {}
-        latest_info = package.get('latest') or {}
-        resolvable_info = package.get('resolvable') or {}
+        current_info = package.get('current')
+        latest_info = package.get('latest')
+        resolvable_info = package.get('resolvable')
 
         current = current_info.get('version') if isinstance(current_info, dict) else None
         latest = latest_info.get('version') if isinstance(latest_info, dict) else None

@@ -21,21 +21,9 @@ final container = createContainer(overrides: [
 
 ## Container Setup
 
-### Using createContainer Helper
+### createContainer Helper
 
-The project includes a `createContainer()` helper that auto-disposes:
-
-```dart
-import '../../../../riverpod_container.dart';
-
-final container = createContainer(overrides: [
-  serviceProvider.overrideWith((ref) => mockService),
-]);
-
-// Container automatically disposed in addTearDown
-```
-
-### Manual Container Setup
+Copy this helper into your test support files (e.g. `test/helpers/riverpod_container.dart`). The deep relative path in the import must match your project structure — there is no universal path.
 
 ```dart
 ProviderContainer createContainer({
@@ -54,6 +42,18 @@ ProviderContainer createContainer({
   return container;
 }
 ```
+
+Use it in tests:
+
+```dart
+final container = createContainer(overrides: [
+  serviceProvider.overrideWith((ref) => mockService),
+]);
+
+// Container automatically disposed in addTearDown
+```
+
+> **Warning — do NOT call `container.dispose()` manually** when you obtained the container from `createContainer()`. The helper already registers an `addTearDown` that disposes it. A second explicit dispose causes a `StateError`. If you need to test `ref.onDispose` behaviour, create the container manually instead (see "Testing Provider Lifecycle" below).
 
 ## Testing AsyncNotifierProvider
 
@@ -348,6 +348,8 @@ test('Given provider dependencies, '
 
 ### Testing ref.onDispose
 
+When testing `ref.onDispose`, you need to call `container.dispose()` yourself to trigger it. **Do not use `createContainer()` here** — it already registers `addTearDown(container.dispose)`, which would dispose the container a second time and throw a `StateError`. Create the container manually instead:
+
 ```dart
 test('Given provider is disposed, '
     'when container is disposed, '
@@ -359,14 +361,14 @@ test('Given provider is disposed, '
   );
   when(mockNotificationService.disposeAudioPlayer(any)).thenAnswer((_) async {});
 
-  final container = createContainer();
+  // Use ProviderContainer directly — NOT createContainer() — to avoid double-dispose.
+  // createContainer() already registers addTearDown(container.dispose); calling
+  // dispose() manually on top of that causes a StateError.
+  final container = ProviderContainer(overrides: [
+    notificationServiceProvider.overrideWith((ref) => mockNotificationService),
+  ]);
   final notifier = container.read(notificationNotifierProvider.notifier);
   await notifier.future;
-
-  // Set up a player in state
-  notifier.state = AsyncData(
-    notifier.state.value!.copyWith(audioPlayer: mockAudioPlayer),
-  );
 
   // Act - Dispose the container to trigger ref.onDispose
   container.dispose();
@@ -392,6 +394,10 @@ test('Given provider is disposed, '
 
 ### Testing State with Conditional Logic
 
+> **Avoid direct `notifier.state = ...` assignment.** It bypasses the notifier's public API and tightly couples tests to `AsyncNotifier` internals — your test breaks whenever the internal state shape changes. Prefer calling a public method that sets the state you need (e.g. `notifier.setAudioPlayer(mockPlayer)`). If no such method exists, consider adding one or restructuring the test to reach the desired state through the normal flow.
+
+When no public setter exists and direct assignment is the only option, document it clearly:
+
 ```dart
 test('Given audio config changes to muted during refresh, '
     'when refreshState is called, '
@@ -411,7 +417,8 @@ test('Given audio config changes to muted during refresh, '
   final notifier = container.read(notificationNotifierProvider.notifier);
   await notifier.future;
 
-  // Set up existing audio player in state
+  // Direct state assignment used here because no public setter exists.
+  // Prefer a public method if one becomes available.
   notifier.state = AsyncData(
     notifier.state.value!.copyWith(audioPlayer: mockAudioPlayer),
   );
@@ -459,7 +466,8 @@ test('Given existing audio player and new notifications with audio, '
   final notifier = container.read(notificationNotifierProvider.notifier);
   await notifier.future;
 
-  // Set up existing audio player
+  // Direct state assignment used to pre-load audio player and radio state.
+  // Replace with a public setter (e.g. notifier.setAudioPlayer(...)) if one exists.
   notifier.state = AsyncData(
     notifier.state.value!.copyWith(
       audioPlayer: mockAudioPlayer,
@@ -508,10 +516,17 @@ test('Given existing audio player and new notifications with audio, '
 
 ### Testing Channel Subscriptions
 
+> **Subscription callbacks cannot be meaningfully unit-tested by simulating them manually.** Directly calling the service and setting `notifier.state` yourself tests nothing about whether the subscription is wired up — it only tests the state shape. True subscription testing requires either:
+>
+> 1. **Extract the callback to a public method** (e.g. `notifier.onAudioConfigChanged(config)`) and unit-test that method directly.
+> 2. **Integration test** the full subscription flow end-to-end.
+>
+> The example below tests the extracted method approach — the recommended pattern:
+
 ```dart
-test('Given notification audio channel update, '
-    'when onNotification is triggered, '
-    'then should refresh audio configuration', () async {
+test('Given audio config changes to muted, '
+    'when onAudioConfigChanged is called, '
+    'then should update isAudioMuted and isAudioEnabled in state', () async {
   // Arrange
   when(mockNotificationService.fetchNotifications()).thenAnswer((_) async => []);
   when(mockNotificationService.getAudioConfiguration()).thenAnswer(
@@ -522,20 +537,8 @@ test('Given notification audio channel update, '
   final notifier = container.read(notificationNotifierProvider.notifier);
   await notifier.future;
 
-  // Update audio config for callback
-  when(mockNotificationService.getAudioConfiguration()).thenAnswer(
-    (_) async => (isAudioMuted: true, isAudioEnabled: false),
-  );
-
-  // Act - Manually trigger the audio configuration update
-  // This simulates what would happen in the subscription callback
-  final audioConfig = await mockNotificationService.getAudioConfiguration();
-  notifier.state = AsyncData(
-    notifier.state.value!.copyWith(
-      isAudioEnabled: audioConfig.isAudioEnabled,
-      isAudioMuted: audioConfig.isAudioMuted,
-    ),
-  );
+  // Act - Call the public method that the subscription callback delegates to
+  await notifier.onAudioConfigChanged(isAudioMuted: true, isAudioEnabled: false);
 
   // Assert
   final state = container.read(notificationNotifierProvider).value!;

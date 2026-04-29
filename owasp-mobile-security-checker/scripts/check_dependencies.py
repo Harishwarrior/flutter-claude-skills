@@ -6,13 +6,14 @@ This script analyzes pubspec.yaml for outdated packages, version constraints,
 and known vulnerabilities.
 """
 
+import re
 import yaml
 import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 
 def load_pubspec(project_root: str) -> Dict:
@@ -135,34 +136,57 @@ def analyze_outdated_results(outdated_data: Dict) -> List[Dict]:
     return findings
 
 
+def parse_min_version(constraint) -> Tuple[int, int, int]:
+    """Extract the minimum pinned version from a pubspec constraint string."""
+    if constraint is None or str(constraint).strip() == 'any':
+        return (0, 0, 0)
+    match = re.search(r'(\d+)\.(\d+)\.(\d+)', str(constraint))
+    if match:
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return (0, 0, 0)
+
+
+def version_below_threshold(version: Tuple[int, int, int], threshold_str: str) -> bool:
+    """Return True if version is below the threshold expressed as '<X.Y.Z'."""
+    match = re.search(r'(\d+)\.(\d+)\.(\d+)', threshold_str)
+    if not match:
+        return False
+    threshold = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return version < threshold
+
+
 def check_dangerous_packages(pubspec: Dict) -> List[Dict]:
-    """Check for known dangerous or deprecated packages."""
+    """Check for known packages where old versions have security issues."""
     findings = []
 
-    # Known packages with security issues or deprecated
     dangerous_packages = {
         'http': {
             'versions': ['<0.13.0'],
             'issue': 'Old versions lack important security features',
-            'severity': 'HIGH'
+            'severity': 'HIGH',
         },
         'path_provider': {
             'versions': ['<2.0.0'],
             'issue': 'Older versions have path traversal vulnerabilities',
-            'severity': 'MEDIUM'
+            'severity': 'MEDIUM',
         },
     }
 
     dependencies = pubspec.get('dependencies', {})
 
     for package, version_info in dangerous_packages.items():
-        if package in dependencies:
-            findings.append({
-                'package': package,
-                'issue': version_info['issue'],
-                'severity': version_info['severity'],
-                'recommendation': 'Update to the latest stable version'
-            })
+        if package not in dependencies:
+            continue
+        min_version = parse_min_version(dependencies[package])
+        for threshold in version_info['versions']:
+            if version_below_threshold(min_version, threshold):
+                findings.append({
+                    'package': package,
+                    'current_constraint': str(dependencies[package]),
+                    'issue': version_info['issue'],
+                    'severity': version_info['severity'],
+                    'recommendation': f'Update to a version that satisfies {threshold.replace("<", ">=")}',
+                })
 
     return findings
 
@@ -195,29 +219,28 @@ def main():
     dangerous_findings = check_dangerous_packages(pubspec)
     all_findings.extend(dangerous_findings)
 
+    # Group by severity (initialised before the findings check so it's always defined)
+    by_severity: Dict[str, List] = {'CRITICAL': [], 'HIGH': [], 'MEDIUM': [], 'LOW': []}
+    for finding in all_findings:
+        severity = finding.get('severity', 'MEDIUM')
+        by_severity.setdefault(severity, []).append(finding)
+
     # Print results
     print(f"\n{'='*60}")
     print("Dependency Scan Results:")
     print(f"{'='*60}")
     print(f"Total issues found: {len(all_findings)}\n")
 
-    if all_findings:
-        # Group by severity
-        by_severity = {'CRITICAL': [], 'HIGH': [], 'MEDIUM': [], 'LOW': []}
-        for finding in all_findings:
-            severity = finding.get('severity', 'MEDIUM')
-            by_severity[severity].append(finding)
-
-        for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
-            if by_severity[severity]:
-                print(f"\n{severity} Severity ({len(by_severity[severity])}):")
-                print('-' * 60)
-                for finding in by_severity[severity]:
-                    print(f"\nPackage: {finding['package']}")
-                    print(f"Issue: {finding['issue']}")
-                    if 'current_version' in finding:
-                        print(f"Current: {finding['current_version']}, Latest: {finding['latest_version']}")
-                    print(f"Recommendation: {finding['recommendation']}")
+    for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
+        if by_severity[severity]:
+            print(f"\n{severity} Severity ({len(by_severity[severity])}):")
+            print('-' * 60)
+            for finding in by_severity[severity]:
+                print(f"\nPackage: {finding['package']}")
+                print(f"Issue: {finding['issue']}")
+                if 'current_version' in finding:
+                    print(f"Current: {finding['current_version']}, Latest: {finding['latest_version']}")
+                print(f"Recommendation: {finding['recommendation']}")
 
     # Save results
     output_file = Path(project_root) / 'owasp_m2_dependencies_scan.json'
@@ -230,7 +253,6 @@ def main():
     print(f"\n{'='*60}")
     print(f"Results saved to: {output_file}")
 
-    # Exit with error if critical/high issues found
     critical_high = len(by_severity['CRITICAL']) + len(by_severity['HIGH'])
     sys.exit(1 if critical_high > 0 else 0)
 

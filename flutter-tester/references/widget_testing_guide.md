@@ -6,12 +6,26 @@ This file provides comprehensive patterns for testing Flutter widgets in the Flu
 
 ### Always Set Screen Size
 
-Prevent overflow errors by setting explicit screen dimensions:
+Prevent overflow errors by setting explicit screen dimensions. Prefer hoisting this into `setUp` so it applies to every test in the group and resets automatically — this avoids repeating the two lines in every `testWidgets` block:
+
+```dart
+// ✅ PREFERRED — set once per group, auto-reset
+setUp(() {
+  tester.view.physicalSize = const Size(1000, 1000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+});
+```
+
+If you only need it for a single test, set it inline:
 
 ```dart
 testWidgets('Test description', (tester) async {
   tester.view.physicalSize = const Size(1000, 1000);
   tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
 
   // Your test code
 });
@@ -211,19 +225,20 @@ await tester.pumpAndSettle(); // Wait for everything to settle
 
 ### Testing iOS-Specific Widgets
 
+Use `addTearDown` to reset the platform override — a manual reset at the end of a test is silently skipped if the test throws, leaving the override set for all subsequent tests.
+
 ```dart
 testWidgets('SerialNumberWidget is shown on iOS platform', (tester) async {
   tester.view.physicalSize = const Size(1000, 1000);
   tester.view.devicePixelRatio = 1.0;
 
   debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  addTearDown(() => debugDefaultTargetPlatformOverride = null); // safe reset
 
   await tester.pumpWidget(createTestWidget());
 
   expect(find.byType(SerialNumberWidget), findsOneWidget);
   expect(find.byType(CupertinoButton), findsOneWidget);
-
-  debugDefaultTargetPlatformOverride = null; // Always reset!
 });
 ```
 
@@ -235,13 +250,12 @@ testWidgets('Material widgets shown on Android', (tester) async {
   tester.view.devicePixelRatio = 1.0;
 
   debugDefaultTargetPlatformOverride = TargetPlatform.android;
+  addTearDown(() => debugDefaultTargetPlatformOverride = null);
 
   await tester.pumpWidget(createTestWidget());
 
   expect(find.byType(ElevatedButton), findsOneWidget);
   expect(find.byType(MaterialApp), findsOneWidget);
-
-  debugDefaultTargetPlatformOverride = null;
 });
 ```
 
@@ -251,22 +265,20 @@ testWidgets('Material widgets shown on Android', (tester) async {
 group('Platform-Specific Tests', () {
   testWidgets('iOS specific behavior', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
 
     await tester.pumpWidget(createTestWidget());
 
     expect(find.byType(CupertinoButton), findsOneWidget);
-
-    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('Android specific behavior', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
 
     await tester.pumpWidget(createTestWidget());
 
     expect(find.byType(ElevatedButton), findsOneWidget);
-
-    debugDefaultTargetPlatformOverride = null;
   });
 });
 ```
@@ -478,12 +490,16 @@ testWidgets('dispose cleans up resources', (tester) async {
 
 ### Testing Conditional Rendering
 
+When mutating global state, always restore it with `addTearDown` — otherwise tests that run later inherit the mutated value and produce unpredictable failures.
+
 ```dart
 testWidgets('Shows widget A when condition is true', (tester) async {
   tester.view.physicalSize = const Size(1000, 1000);
   tester.view.devicePixelRatio = 1.0;
 
+  final original = global_variables.appCommunicationStatus;
   global_variables.appCommunicationStatus = 3;
+  addTearDown(() => global_variables.appCommunicationStatus = original);
 
   await tester.pumpWidget(createTestWidget());
 
@@ -495,7 +511,9 @@ testWidgets('Shows widget B when condition is false', (tester) async {
   tester.view.physicalSize = const Size(1000, 1000);
   tester.view.devicePixelRatio = 1.0;
 
+  final original = global_variables.appCommunicationStatus;
   global_variables.appCommunicationStatus = 1;
+  addTearDown(() => global_variables.appCommunicationStatus = original);
 
   await tester.pumpWidget(createTestWidget());
 

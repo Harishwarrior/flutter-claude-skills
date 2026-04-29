@@ -9,6 +9,7 @@ This script checks for insecure data storage patterns, including:
 """
 
 import re
+import sys
 import json
 from pathlib import Path
 from typing import List, Dict
@@ -202,8 +203,6 @@ def scan_project(project_root: str) -> Dict:
 
 def main():
     """Main execution function."""
-    import sys
-
     project_root = sys.argv[1] if len(sys.argv) > 1 else '.'
 
     print(f"OWASP M9: Analyzing data storage security in {project_root}\n")
@@ -242,8 +241,11 @@ def main():
     print(f"\n{'='*60}")
     print(f"Results saved to: {output_file}")
 
-    # Exit with error if high/critical issues found
-    sys.exit(1 if results['total_findings'] > 0 else 0)
+    # Exit with error only on CRITICAL/HIGH (consistent with other scanners)
+    critical_high = sum(
+        1 for f in results['findings'] if f.get('severity') in ('CRITICAL', 'HIGH')
+    )
+    sys.exit(1 if critical_high > 0 else 0)
 
 
 if __name__ == '__main__':

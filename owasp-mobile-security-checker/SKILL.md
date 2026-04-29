@@ -1,13 +1,19 @@
 ---
 name: owasp-mobile-security-checker
 description: Use when performing security audits, vulnerability assessments, or compliance checks on Flutter or mobile applications. Covers OWASP Mobile Top 10 (2024) — hardcoded secrets (M1), insecure storage (M9), weak cryptography (M10), network issues (M5), and 6 more categories with automated scanners and remediation guidance.
-compatibility: Requires Python 3 for automated scanners. Flutter/Dart project with pubspec.yaml. Android and/or iOS targets. Run scripts from the project root directory.
 metadata:
   author: harish
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # OWASP Mobile Security Checker
+
+## Requirements
+
+- Python 3.7+
+- Flutter/Dart project with `pubspec.yaml`
+- Android and/or iOS targets
+- Run scripts from the project root directory
 
 Comprehensive security analysis for Flutter and mobile applications based on OWASP Mobile Top 10 (2024).
 

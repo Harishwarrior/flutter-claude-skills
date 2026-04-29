@@ -1,13 +1,19 @@
 ---
 name: flutter-tester
 description: Use when creating, writing, fixing, or reviewing tests in a Flutter project. Covers unit tests, widget tests, integration tests, Riverpod provider testing, and Mockito mocking. Provides Given-When-Then patterns, layer isolation strategies, and test setup for GetIt, SharedPreferences, and FakeDatabase.
-compatibility: Requires a Flutter project with flutter_test. Works with Riverpod, Mockito, and GetIt. Run `dart run build_runner build` to generate mocks after adding @GenerateMocks annotations. Compatible with FVM.
 metadata:
   author: harish
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # Flutter Tester
+
+## Requirements
+
+- Flutter project with `flutter_test` dependency
+- Works with Riverpod, Mockito, and GetIt
+- Run `dart run build_runner build` to generate mocks after adding `@GenerateMocks` annotations
+- Compatible with FVM (`fvm flutter test` instead of `flutter test`)
 
 ## Overview
 

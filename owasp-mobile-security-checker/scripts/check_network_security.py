@@ -10,6 +10,7 @@ This script analyzes Flutter project for:
 """
 
 import re
+import sys
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -20,86 +21,107 @@ def scan_http_usage(file_path: Path) -> List[Dict]:
     """Scan for insecure HTTP usage instead of HTTPS."""
     findings = []
 
-    try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-            lines = content.split('\n')
-
-            # Patterns for HTTP usage
-            http_patterns = [
-                (r'http://(?!localhost|127\.0\.0\.1|0\.0\.0\.0)', 'HTTP URL (non-localhost)'),
-                (r'["\']http:["\']', 'HTTP scheme'),
-                (r'ws://', 'Insecure WebSocket'),
-            ]
-
-            for line_num, line in enumerate(lines, 1):
-                # Skip comments
-                if line.strip().startswith('//'):
-                    continue
-
-                for pattern, issue_type in http_patterns:
-                    matches = re.finditer(pattern, line, re.IGNORECASE)
-                    for match in matches:
-                        findings.append({
-                            'file': str(file_path),
-                            'line': line_num,
-                            'issue': issue_type,
-                            'code': line.strip(),
-                            'severity': 'HIGH',
-                            'recommendation': 'Use HTTPS/WSS instead of HTTP/WS'
-                        })
-
-    except Exception as e:
-        print(f"Error scanning {file_path}: {e}")
-
-    return findings
-
-
-def check_certificate_pinning(file_path: Path) -> List[Dict]:
-    """Check for certificate pinning implementation."""
-    findings = []
+    http_patterns = [
+        (r'http://(?!localhost|127\.0\.0\.1|0\.0\.0\.0)', 'HTTP URL (non-localhost)'),
+        (r'["\']http:["\']', 'HTTP scheme'),
+        (r'ws://', 'Insecure WebSocket'),
+    ]
 
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
+            lines = f.read().split('\n')
 
-            # Check for HTTP client with custom certificate validation
-            has_http_client = 'HttpClient' in content
-            has_bad_cert_callback = 'badCertificateCallback' in content
+        in_block_comment = False
+        for line_num, line in enumerate(lines, 1):
+            stripped = line.strip()
 
-            if has_bad_cert_callback:
-                # Check if it's accepting all certificates (insecure)
-                if re.search(r'badCertificateCallback.*=.*\(.*\).*=>.*true', content):
+            if in_block_comment:
+                if '*/' in line:
+                    in_block_comment = False
+                continue
+            if stripped.startswith('/*'):
+                if '*/' not in line:
+                    in_block_comment = True
+                continue
+            if stripped.startswith('//'):
+                continue
+
+            for pattern, issue_type in http_patterns:
+                for _ in re.finditer(pattern, line, re.IGNORECASE):
                     findings.append({
                         'file': str(file_path),
-                        'line': 0,
-                        'issue': 'Certificate validation disabled (accepts all certificates)',
-                        'code': 'badCertificateCallback = (...) => true',
-                        'severity': 'CRITICAL',
-                        'recommendation': 'Remove this in production or implement proper certificate pinning'
+                        'line': line_num,
+                        'issue': issue_type,
+                        'code': stripped,
+                        'severity': 'HIGH',
+                        'recommendation': 'Use HTTPS/WSS instead of HTTP/WS',
                     })
-
-            # Check for certificate pinning packages
-            has_cert_pinning = any(pkg in content for pkg in [
-                'http_certificate_pinning',
-                'cert_pinning',
-                'ssl_pinning_plugin'
-            ])
-
-            if has_http_client and not has_cert_pinning and not has_bad_cert_callback:
-                findings.append({
-                    'file': str(file_path),
-                    'line': 0,
-                    'issue': 'No certificate pinning detected',
-                    'code': 'HttpClient usage without pinning',
-                    'severity': 'MEDIUM',
-                    'recommendation': 'Consider implementing certificate pinning for sensitive APIs'
-                })
 
     except Exception as e:
         print(f"Error scanning {file_path}: {e}")
 
     return findings
+
+
+def check_bad_cert_callback(file_path: Path) -> List[Dict]:
+    """Check for dangerous badCertificateCallback that accepts all certificates."""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        if re.search(r'badCertificateCallback.*=.*\(.*\).*=>.*true', content):
+            findings.append({
+                'file': str(file_path),
+                'line': 0,
+                'issue': 'Certificate validation disabled (accepts all certificates)',
+                'code': 'badCertificateCallback = (...) => true',
+                'severity': 'CRITICAL',
+                'recommendation': 'Remove this in production or implement proper certificate pinning',
+            })
+    except Exception as e:
+        print(f"Error scanning {file_path}: {e}")
+    return findings
+
+
+def check_http_client_pinning(project_root: Path, dart_files: List[Path]) -> List[Dict]:
+    """Project-level check: report once if HttpClient is used without a pinning package."""
+    uses_http_client = False
+    for file_path in dart_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                if 'HttpClient' in f.read():
+                    uses_http_client = True
+                    break
+        except Exception:
+            pass
+
+    if not uses_http_client:
+        return []
+
+    pubspec_path = project_root / 'pubspec.yaml'
+    has_pinning_package = False
+    if pubspec_path.exists():
+        try:
+            content = pubspec_path.read_text()
+            has_pinning_package = any(pkg in content for pkg in [
+                'http_certificate_pinning',
+                'cert_pinning',
+                'ssl_pinning_plugin',
+            ])
+        except Exception:
+            pass
+
+    if has_pinning_package:
+        return []
+
+    return [{
+        'file': 'pubspec.yaml',
+        'line': 0,
+        'issue': 'HttpClient used without a certificate pinning package',
+        'code': 'No http_certificate_pinning / ssl_pinning_plugin found in pubspec.yaml',
+        'severity': 'MEDIUM',
+        'recommendation': 'Consider implementing certificate pinning for sensitive APIs',
+    }]
 
 
 def check_android_network_security(project_root: Path) -> List[Dict]:
@@ -209,17 +231,14 @@ def scan_project(project_root: str) -> Dict:
     print(f"Scanning {len(dart_files)} Dart files for network security issues...")
 
     for file_path in dart_files:
-        findings = []
-        findings.extend(scan_http_usage(file_path))
-        findings.extend(check_certificate_pinning(file_path))
-        all_findings.extend(findings)
+        all_findings.extend(scan_http_usage(file_path))
+        all_findings.extend(check_bad_cert_callback(file_path))
 
-    # Check platform-specific configurations
-    android_findings = check_android_network_security(project_path)
-    all_findings.extend(android_findings)
+    # Project-level pinning check — emits one finding, not one per file
+    all_findings.extend(check_http_client_pinning(project_path, dart_files))
 
-    ios_findings = check_ios_ats_configuration(project_path)
-    all_findings.extend(ios_findings)
+    all_findings.extend(check_android_network_security(project_path))
+    all_findings.extend(check_ios_ats_configuration(project_path))
 
     return {
         'total_files_scanned': len(dart_files),
@@ -230,13 +249,16 @@ def scan_project(project_root: str) -> Dict:
 
 def main():
     """Main execution function."""
-    import sys
-
     project_root = sys.argv[1] if len(sys.argv) > 1 else '.'
 
     print(f"OWASP M5: Analyzing network security in {project_root}\n")
 
     results = scan_project(project_root)
+
+    # Group by severity (always initialised so the exit-code line is always safe)
+    by_severity: Dict[str, List] = {'CRITICAL': [], 'HIGH': [], 'MEDIUM': [], 'LOW': []}
+    for finding in results['findings']:
+        by_severity.setdefault(finding.get('severity', 'MEDIUM'), []).append(finding)
 
     print(f"\n{'='*60}")
     print("Network Security Scan Results:")
@@ -244,23 +266,16 @@ def main():
     print(f"Files scanned: {results['total_files_scanned']}")
     print(f"Issues found: {results['total_findings']}\n")
 
-    if results['findings']:
-        # Group by severity
-        by_severity = {'CRITICAL': [], 'HIGH': [], 'MEDIUM': [], 'LOW': []}
-        for finding in results['findings']:
-            severity = finding.get('severity', 'MEDIUM')
-            by_severity[severity].append(finding)
-
-        for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
-            if by_severity[severity]:
-                print(f"\n{severity} Severity ({len(by_severity[severity])}):")
-                print('-' * 60)
-                for i, finding in enumerate(by_severity[severity], 1):
-                    print(f"\n{i}. {finding['issue']}")
-                    print(f"   File: {finding['file']}:{finding['line']}")
-                    if finding.get('code'):
-                        print(f"   Code: {finding['code']}")
-                    print(f"   Recommendation: {finding['recommendation']}")
+    for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
+        if by_severity[severity]:
+            print(f"\n{severity} Severity ({len(by_severity[severity])}):")
+            print('-' * 60)
+            for i, finding in enumerate(by_severity[severity], 1):
+                print(f"\n{i}. {finding['issue']}")
+                print(f"   File: {finding['file']}:{finding['line']}")
+                if finding.get('code'):
+                    print(f"   Code: {finding['code']}")
+                print(f"   Recommendation: {finding['recommendation']}")
 
     # Save results
     output_file = Path(project_root) / 'owasp_m5_network_scan.json'
@@ -270,8 +285,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"Results saved to: {output_file}")
 
-    # Exit with error if critical/high issues found
-    critical_high = len(by_severity.get('CRITICAL', [])) + len(by_severity.get('HIGH', []))
+    critical_high = len(by_severity['CRITICAL']) + len(by_severity['HIGH'])
     sys.exit(1 if critical_high > 0 else 0)
 
 

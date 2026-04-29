@@ -8,47 +8,48 @@ passwords, and other sensitive credentials in Dart source files.
 
 import re
 import os
+import sys
 import json
 from pathlib import Path
 from typing import List, Dict, Tuple
 
-# Patterns for detecting hardcoded secrets
+# Patterns for detecting hardcoded secrets — (regex, label, severity)
 SECRET_PATTERNS = [
     # API Keys and Tokens
-    (r'api[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'API Key'),
-    (r'apikey\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'API Key'),
-    (r'api[_-]?secret\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'API Secret'),
-    (r'access[_-]?token\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Access Token'),
-    (r'auth[_-]?token\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Auth Token'),
-    (r'bearer\s+["\']([a-zA-Z0-9_\-\.]{20,})["\']', 'Bearer Token'),
+    (r'api[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'API Key', 'HIGH'),
+    (r'apikey\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'API Key', 'HIGH'),
+    (r'api[_-]?secret\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'API Secret', 'HIGH'),
+    (r'access[_-]?token\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Access Token', 'HIGH'),
+    (r'auth[_-]?token\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Auth Token', 'HIGH'),
+    (r'bearer\s+["\']([a-zA-Z0-9_\-\.]{20,})["\']', 'Bearer Token', 'HIGH'),
 
     # AWS Credentials
-    (r'aws[_-]?access[_-]?key[_-]?id\s*[:=]\s*["\']([A-Z0-9]{20})["\']', 'AWS Access Key'),
-    (r'aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9/+=]{40})["\']', 'AWS Secret Key'),
+    (r'aws[_-]?access[_-]?key[_-]?id\s*[:=]\s*["\']([A-Z0-9]{20})["\']', 'AWS Access Key', 'CRITICAL'),
+    (r'aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9/+=]{40})["\']', 'AWS Secret Key', 'CRITICAL'),
 
     # Firebase
-    (r'firebase[_-]?api[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-]{30,})["\']', 'Firebase API Key'),
+    (r'firebase[_-]?api[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-]{30,})["\']', 'Firebase API Key', 'HIGH'),
 
     # Database credentials
-    (r'db[_-]?password\s*[:=]\s*["\']([^"\']+)["\']', 'Database Password'),
-    (r'database[_-]?url\s*[:=]\s*["\'][^"\']*:[^"\']*@[^"\']+["\']', 'Database URL with credentials'),
+    (r'db[_-]?password\s*[:=]\s*["\']([^"\']+)["\']', 'Database Password', 'HIGH'),
+    (r'database[_-]?url\s*[:=]\s*["\'][^"\']*:[^"\']*@[^"\']+["\']', 'Database URL with credentials', 'CRITICAL'),
 
     # Generic passwords
-    (r'password\s*[:=]\s*["\']([^"\']{8,})["\']', 'Password'),
-    (r'passwd\s*[:=]\s*["\']([^"\']{8,})["\']', 'Password'),
-    (r'pwd\s*[:=]\s*["\']([^"\']{8,})["\']', 'Password'),
+    (r'password\s*[:=]\s*["\']([^"\']{8,})["\']', 'Password', 'MEDIUM'),
+    (r'passwd\s*[:=]\s*["\']([^"\']{8,})["\']', 'Password', 'MEDIUM'),
+    (r'pwd\s*[:=]\s*["\']([^"\']{8,})["\']', 'Password', 'MEDIUM'),
 
     # Private keys
-    (r'private[_-]?key\s*[:=]\s*["\']([^"\']+)["\']', 'Private Key'),
-    (r'-----BEGIN (?:RSA |DSA )?PRIVATE KEY-----', 'Private Key Block'),
+    (r'private[_-]?key\s*[:=]\s*["\']([^"\']+)["\']', 'Private Key', 'CRITICAL'),
+    (r'-----BEGIN (?:RSA |DSA )?PRIVATE KEY-----', 'Private Key Block', 'CRITICAL'),
 
     # OAuth and Client Secrets
-    (r'client[_-]?secret\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Client Secret'),
-    (r'client[_-]?id\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Client ID'),
+    (r'client[_-]?secret\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Client Secret', 'HIGH'),
+    (r'client[_-]?id\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', 'Client ID', 'MEDIUM'),
 
     # Generic secrets
-    (r'secret[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-]{16,})["\']', 'Secret Key'),
-    (r'encryption[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-/+=]{16,})["\']', 'Encryption Key'),
+    (r'secret[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-]{16,})["\']', 'Secret Key', 'HIGH'),
+    (r'encryption[_-]?key\s*[:=]\s*["\']([a-zA-Z0-9_\-/+=]{16,})["\']', 'Encryption Key', 'HIGH'),
 ]
 
 # False positive patterns to exclude
@@ -61,7 +62,7 @@ FALSE_POSITIVE_PATTERNS = [
     r'FIXME',
     r'TODO',
     r'dummy',
-    r'test',
+    r'\btest\b',
     r'sample',
     r'placeholder',
 ]
@@ -85,17 +86,29 @@ def scan_file(file_path: Path) -> List[Dict]:
             content = f.read()
             lines = content.split('\n')
 
+            in_block_comment = False
             for line_num, line in enumerate(lines, 1):
-                # Skip comments
-                if line.strip().startswith('//') or line.strip().startswith('/*'):
+                stripped = line.strip()
+
+                # Track block comments (Dart does not support nested /* */)
+                if in_block_comment:
+                    if '*/' in line:
+                        in_block_comment = False
+                    continue
+                if stripped.startswith('/*'):
+                    if '*/' not in line:
+                        in_block_comment = True
                     continue
 
-                for pattern, secret_type in SECRET_PATTERNS:
+                # Skip single-line comments
+                if stripped.startswith('//'):
+                    continue
+
+                for pattern, secret_type, severity in SECRET_PATTERNS:
                     matches = re.finditer(pattern, line, re.IGNORECASE)
                     for match in matches:
                         value = match.group(1) if len(match.groups()) > 0 else match.group(0)
 
-                        # Skip false positives
                         if is_false_positive(value):
                             continue
 
@@ -104,7 +117,7 @@ def scan_file(file_path: Path) -> List[Dict]:
                             'line': line_num,
                             'type': secret_type,
                             'pattern': line.strip(),
-                            'severity': 'HIGH'
+                            'severity': severity,
                         })
     except Exception as e:
         print(f"Error scanning {file_path}: {e}")
@@ -117,10 +130,6 @@ def scan_project(project_root: str) -> Dict:
     project_path = Path(project_root)
     all_findings = []
 
-    # Directories to scan
-    scan_dirs = ['lib', 'android', 'ios']
-
-    # File extensions to check
     dart_files = list(project_path.glob('lib/**/*.dart'))
     gradle_files = list(project_path.glob('android/**/*.gradle'))
     plist_files = list(project_path.glob('ios/**/*.plist'))
@@ -142,8 +151,6 @@ def scan_project(project_root: str) -> Dict:
 
 def main():
     """Main execution function."""
-    import sys
-
     if len(sys.argv) < 2:
         project_root = os.getcwd()
     else:
@@ -186,8 +193,11 @@ def main():
 
     print(f"Results saved to: {output_file}")
 
-    # Exit with error code if secrets found
-    sys.exit(1 if results['total_findings'] > 0 else 0)
+    # Exit with error code only on CRITICAL/HIGH findings (consistent with other scanners)
+    critical_high = sum(
+        1 for f in results['findings'] if f.get('severity') in ('CRITICAL', 'HIGH')
+    )
+    sys.exit(1 if critical_high > 0 else 0)
 
 
 if __name__ == '__main__':

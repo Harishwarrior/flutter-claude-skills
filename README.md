@@ -91,9 +91,21 @@ A comprehensive security auditing skill based on the OWASP Mobile Top 10 (2024) 
 
 ### Setup Options
 
-Skills can be installed in two locations:
+#### Option 1: npx skills (Recommended)
 
-#### Option 1: Personal Skills (Recommended for individual use)
+Install globally across all your projects with a single command:
+
+```bash
+npx skills add Harishwarrior/flutter-claude-skills
+```
+
+To install for the current project only:
+
+```bash
+npx skills add Harishwarrior/flutter-claude-skills --agent claude-code
+```
+
+#### Option 2: Personal Skills (Manual)
 
 Install to `~/.claude/skills/` for use across all your projects:
 
@@ -107,7 +119,7 @@ After cloning, the skills will be available in:
 - `~/.claude/skills/flutter-claude-skills/flutter-tester/`
 - `~/.claude/skills/flutter-claude-skills/owasp-mobile-security-checker/`
 
-#### Option 2: Project Skills (Recommended for team use)
+#### Option 3: Project Skills (Recommended for team use)
 
 Install to `.claude/skills/` in your Flutter project for team sharing:
 

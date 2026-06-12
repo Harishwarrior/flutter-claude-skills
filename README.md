@@ -4,7 +4,7 @@
 
 A collection of specialized Claude Code skills for Flutter development, focusing on testing and security best practices.
 
-<img width="720" height="480" alt="Gemini_Generated_Image_hc8b78hc8b78hc8b" src="https://github.com/user-attachments/assets/57cdb77d-db53-4e94-a429-5f4b6a3b4166" />
+<img alt="Gemini Generated Image" src="https://github.com/user-attachments/assets/57cdb77d-db53-4e94-a429-5f4b6a3b4166" style="max-width:100%; height:auto;" />
 
 ## What are Claude Skills?
 
@@ -98,6 +98,8 @@ Install globally across all your projects with a single command:
 ```bash
 npx skills add Harishwarrior/flutter-claude-skills
 ```
+
+<img alt="Flutter Claude Skills" src="images/skills.png" width="1622" height="786" style="max-width:100%; height:auto;" />
 
 To install for the current project only:
 
